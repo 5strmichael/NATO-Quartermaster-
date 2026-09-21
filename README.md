@@ -40,16 +40,8 @@ The exact restricted equipment is selected from the live vanilla trader database
 
 ## Build
 
-Requires the .NET 10 SDK.
 
-```powershell
-dotnet restore
-dotnet build -c Release
-```
 
-The release build creates:
-
-`ReleaseZip\Michael-NATOQuartermaster-1.1.3.zip`
 
 ## Updating from an older version
 
