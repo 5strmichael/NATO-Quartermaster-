@@ -528,4 +528,212 @@ public sealed class NATOQuartermasterMod(
         IReadOnlyCollection<OfferResult> quest1Unlocks,
         IReadOnlyCollection<OfferResult> quest2Unlocks,
         IReadOnlyCollection<OfferResult> quest3Unlocks,
-        IReadOnlyCollection<OfferResult> quest4Unloc
+        IReadOnlyCollection<OfferResult> quest4Unlocks,
+        IReadOnlyCollection<OfferResult> quest5Unlocks,
+        IReadOnlyCollection<OfferResult> quest6Unlocks,
+        ICloner cloner)
+    {
+        AddQuestUnlockMappings(targetTrader, QuestInventoryCheck, quest1Unlocks);
+        AddQuestUnlockMappings(targetTrader, QuestChainOfCustody, quest2Unlocks);
+        AddQuestUnlockMappings(targetTrader, QuestRestrictedIssue, quest3Unlocks);
+        AddQuestUnlockMappings(targetTrader, QuestSupplyInterruption, quest4Unlocks);
+        AddQuestUnlockMappings(targetTrader, QuestBlackLedger, quest5Unlocks);
+        AddQuestUnlockMappings(targetTrader, QuestPriorityShipment, quest6Unlocks);
+
+        var q1MreCondition = CreateHandoverCondition(
+            StableId($"{QuestInventoryCheck}:mre"), [MreTpl], 2, 0, 0);
+        var q1WaterCondition = CreateHandoverCondition(
+            StableId($"{QuestInventoryCheck}:water"), [WaterTpl], 2, 0, 1);
+        var q2DogtagCondition = CreateHandoverCondition(
+            StableId($"{QuestChainOfCustody}:dogtags"), DogtagTpls, 5, 0, 0);
+        var q3DogtagCondition = CreateHandoverCondition(
+            StableId($"{QuestRestrictedIssue}:dogtags"), DogtagTpls, 10, 15, 0);
+        var q4ScavCondition = CreateKillCondition(
+            QuestSupplyInterruption, "Savage", 12, 0, "bigmap");
+        var q5DogtagCondition = CreateHandoverCondition(
+            StableId($"{QuestBlackLedger}:dogtags"), DogtagTpls, 8, 25, 0);
+        var q6PmcCondition = CreateKillCondition(
+            QuestPriorityShipment, "AnyPmc", 8, 0, null);
+        var q6DogtagCondition = CreateHandoverCondition(
+            StableId($"{QuestPriorityShipment}:dogtags"), DogtagTpls, 12, 30, 1);
+
+        var quest1 = CreateQuest(
+            QuestInventoryCheck,
+            "Inventory Check",
+            [CreateLevelCondition(StableId($"{QuestInventoryCheck}:level"), 1)],
+            [q1MreCondition, q1WaterCondition],
+            1000,
+            questImage,
+            quest1Unlocks,
+            cloner);
+
+        var quest2 = CreateQuest(
+            QuestChainOfCustody,
+            "Chain of Custody",
+            [CreateQuestRequirement(StableId($"{QuestChainOfCustody}:previous"), QuestInventoryCheck)],
+            [q2DogtagCondition],
+            2500,
+            questImage,
+            quest2Unlocks,
+            cloner);
+
+        var quest3 = CreateQuest(
+            QuestRestrictedIssue,
+            "Restricted Issue",
+            [CreateQuestRequirement(StableId($"{QuestRestrictedIssue}:previous"), QuestChainOfCustody)],
+            [q3DogtagCondition],
+            5000,
+            questImage,
+            quest3Unlocks,
+            cloner);
+
+        var quest4 = CreateQuest(
+            QuestSupplyInterruption,
+            "Supply Interruption",
+            [CreateQuestRequirement(StableId($"{QuestSupplyInterruption}:previous"), QuestRestrictedIssue)],
+            [q4ScavCondition],
+            7500,
+            questImage,
+            quest4Unlocks,
+            cloner);
+
+        var quest5 = CreateQuest(
+            QuestBlackLedger,
+            "Black Ledger",
+            [CreateQuestRequirement(StableId($"{QuestBlackLedger}:previous"), QuestSupplyInterruption)],
+            [q5DogtagCondition],
+            10000,
+            questImage,
+            quest5Unlocks,
+            cloner);
+
+        var quest6 = CreateQuest(
+            QuestPriorityShipment,
+            "Priority Shipment",
+            [CreateQuestRequirement(StableId($"{QuestPriorityShipment}:previous"), QuestBlackLedger)],
+            [q6PmcCondition, q6DogtagCondition],
+            15000,
+            questImage,
+            quest6Unlocks,
+            cloner);
+
+        templateTable.Quests[quest1.Id] = quest1;
+        templateTable.Quests[quest2.Id] = quest2;
+        templateTable.Quests[quest3.Id] = quest3;
+        templateTable.Quests[quest4.Id] = quest4;
+        templateTable.Quests[quest5.Id] = quest5;
+        templateTable.Quests[quest6.Id] = quest6;
+
+        traderRegistrationHelper.AddLocaleEntries(BuildQuestLocaleEntries(
+            q1MreCondition.Id.ToString(),
+            q1WaterCondition.Id.ToString(),
+            q2DogtagCondition.Id.ToString(),
+            q3DogtagCondition.Id.ToString(),
+            q4ScavCondition.Id.ToString(),
+            q5DogtagCondition.Id.ToString(),
+            q6PmcCondition.Id.ToString(),
+            q6DogtagCondition.Id.ToString()));
+    }
+
+    private static void AddQuestUnlockMappings(
+        Trader targetTrader,
+        string questId,
+        IEnumerable<OfferResult> unlocks)
+    {
+        foreach (var unlock in unlocks)
+        {
+            targetTrader.QuestAssort["success"][unlock.RootId] = questId;
+        }
+    }
+
+    private static Quest CreateQuest(
+        string questId,
+        string questName,
+        List<QuestCondition> startConditions,
+        List<QuestCondition> finishConditions,
+        int experience,
+        string questImage,
+        IReadOnlyCollection<OfferResult> unlocks,
+        ICloner cloner)
+    {
+        var successRewards = new List<Reward>
+        {
+            new()
+            {
+                Id = StableId($"{questId}:xp"),
+                Type = RewardType.Experience,
+                Value = experience,
+                Index = 0,
+                Unknown = false,
+                AvailableInGameEditions = []
+            }
+        };
+
+        var rewardIndex = 1;
+        foreach (var unlock in unlocks)
+        {
+            var rewardItems = cloner.Clone(unlock.Items);
+            var rewardIdMap = rewardItems.ToDictionary(
+                item => item.Id.ToString(),
+                item => StableId($"{questId}:reward:{unlock.RootId}:{item.Id}"),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var rewardItem in rewardItems)
+            {
+                var oldId = rewardItem.Id.ToString();
+                rewardItem.Id = rewardIdMap[oldId];
+                if (rewardItem.ParentId is not null && rewardIdMap.TryGetValue(rewardItem.ParentId, out var newParent))
+                {
+                    rewardItem.ParentId = newParent;
+                }
+            }
+
+            var rewardRootId = rewardIdMap[unlock.RootId.ToString()];
+            var rewardRoot = rewardItems.First(x => x.Id.ToString() == rewardRootId);
+            rewardRoot.ParentId = null;
+            rewardRoot.SlotId = null;
+
+            successRewards.Add(new Reward
+            {
+                Id = StableId($"{questId}:unlock:{unlock.RootId}"),
+                Type = RewardType.AssortmentUnlock,
+                Index = rewardIndex++,
+                Target = rewardRootId,
+                Items = rewardItems,
+                LoyaltyLevel = 1,
+                TraderId = new StringOrInt(TraderId, null),
+                Unknown = false,
+                AvailableInGameEditions = []
+            });
+        }
+
+        return new Quest
+        {
+            QuestName = questName,
+            Id = questId,
+            CanShowNotificationsInGame = true,
+            Conditions = new QuestConditionTypes
+            {
+                Started = [],
+                AvailableForFinish = finishConditions,
+                AvailableForStart = startConditions,
+                Success = [],
+                Fail = []
+            },
+            Description = $"{questId} description",
+            FailMessageText = $"{questId} failMessageText",
+            Name = $"{questId} name",
+            Note = $"{questId} note",
+            TraderId = TraderId,
+            Location = "any",
+            Image = questImage,
+            Type = QuestTypeEnum.Completion,
+            IsKey = false,
+            Restartable = false,
+            InstantComplete = false,
+            SecretQuest = false,
+            StartedMessageText = $"{questId} startedMessageText",
+            SuccessMessageText = $"{questId} successMessageText",
+            AcceptPlayerMessage = $"{questId} acceptPlayerMessage",
+            AcceptanceAndFinishingSource = "eft",
+            DeclinePlayerMessage = $"{questId} de
