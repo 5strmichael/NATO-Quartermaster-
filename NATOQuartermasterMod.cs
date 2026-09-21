@@ -313,4 +313,219 @@ public sealed class NATOQuartermasterMod(
             quest6Unlocks,
             cloner);
 
-        va
+        var rootOffers = targetTrader.Assort.Items.Count(x => string.Equals(x.ParentId, "hideout", StringComparison.OrdinalIgnoreCase));
+        logger.Success($"[NATO Quartermaster] V1.1.3 loaded: {rootOffers} curated offers and 6 quests.");
+        logger.Success($"[NATO Quartermaster] Quest unlocks: Q1={quest1Unlocks.Count}, Q2={quest2Unlocks.Count}, Q3={quest3Unlocks.Count}, Q4={quest4Unlocks.Count}, Q5={quest5Unlocks.Count}, Q6={quest6Unlocks.Count}.");
+
+        if (quest1Unlocks.Count == 0) logger.Warning("[NATO Quartermaster] Quest 1 has no matching premium vest unlock.");
+        if (quest2Unlocks.Count == 0) logger.Warning("[NATO Quartermaster] Quest 2 has no matching premium weapon unlock.");
+        if (quest3Unlocks.Count == 0) logger.Warning("[NATO Quartermaster] Quest 3 has no matching restricted gear/ammo unlocks.");
+        if (quest4Unlocks.Count == 0) logger.Warning("[NATO Quartermaster] Quest 4 has no matching second-tier armor unlocks.");
+        if (quest5Unlocks.Count == 0) logger.Warning("[NATO Quartermaster] Quest 5 has no matching second premium weapon/ammo unlocks.");
+        if (quest6Unlocks.Count == 0) logger.Warning("[NATO Quartermaster] Quest 6 has no matching black-rack unlocks.");
+
+        return Task.CompletedTask;
+    }
+
+    private static List<OfferCandidate> GetCandidates(
+        string sourceTraderId,
+        TraderAssort source,
+        TemplateTable templateTable,
+        NatoTraderConfig config)
+    {
+        var result = new List<OfferCandidate>();
+        foreach (var root in source.Items.Where(x => string.Equals(x.ParentId, "hideout", StringComparison.OrdinalIgnoreCase)))
+        {
+            var template = templateTable.Items.GetValueOrDefault(root.Template);
+            if (template is null || string.IsNullOrWhiteSpace(template.Name))
+            {
+                continue;
+            }
+
+            var subtree = CollectSubtree(source.Items, root.Id.ToString());
+            var price = GetRoublePrice(source, root.Id, subtree, templateTable, config);
+            if (price <= 0)
+            {
+                continue;
+            }
+
+            result.Add(new OfferCandidate(
+                sourceTraderId,
+                source,
+                root,
+                template.Name.ToLowerInvariant(),
+                price,
+                subtree.Count));
+        }
+
+        return result;
+    }
+
+    private static double GetRoublePrice(
+        TraderAssort source,
+        MongoId rootId,
+        IReadOnlyCollection<Item> subtree,
+        TemplateTable templateTable,
+        NatoTraderConfig config)
+    {
+        if (source.BarterScheme.TryGetValue(rootId, out var alternatives))
+        {
+            foreach (var alternative in alternatives)
+            {
+                if (alternative.Count != 1)
+                {
+                    continue;
+                }
+
+                var requirement = alternative[0];
+                var count = requirement.Count ?? 0;
+                if (count <= 0)
+                {
+                    continue;
+                }
+
+                var tpl = requirement.Template.ToString();
+                if (tpl == RoublesTpl) return count;
+                if (tpl == DollarsTpl) return count * config.UsdToRub;
+                if (tpl == EurosTpl) return count * config.EurToRub;
+            }
+        }
+
+        // Some valuable vanilla equipment is barter-only. Use the live flea-price table as a
+        // fallback baseline. For a built weapon/armour preset, price the entire subtree so the
+        // attachments/plates are not accidentally given away for the root item's value.
+        return subtree.Sum(item => templateTable.Prices.GetValueOrDefault(item.Template, 0));
+    }
+
+    private static bool TryCopyOffer(
+        OfferCandidate candidate,
+        TraderAssort destination,
+        HashSet<string> copiedSourceOffers,
+        double markup,
+        int stock,
+        int buyLimit,
+        ICloner cloner,
+        out OfferResult? result)
+    {
+        result = null;
+        if (!copiedSourceOffers.Add(candidate.SourceKey))
+        {
+            return false;
+        }
+
+        var sourceSubtree = CollectSubtree(candidate.SourceAssort.Items, candidate.Root.Id.ToString());
+        if (sourceSubtree.Count == 0)
+        {
+            return false;
+        }
+
+        var idMap = sourceSubtree.ToDictionary(
+            x => x.Id.ToString(),
+            x => StableId($"{TraderId}:{candidate.SourceTraderId}:{candidate.Root.Id}:{x.Id}"),
+            StringComparer.OrdinalIgnoreCase);
+
+        var copiedItems = cloner.Clone(sourceSubtree);
+        foreach (var item in copiedItems)
+        {
+            var oldId = item.Id.ToString();
+            item.Id = idMap[oldId];
+
+            if (item.ParentId is not null && idMap.TryGetValue(item.ParentId, out var newParent))
+            {
+                item.ParentId = newParent;
+            }
+        }
+
+        var newRootId = idMap[candidate.Root.Id.ToString()];
+        var root = copiedItems.First(x => x.Id.ToString() == newRootId);
+        root.ParentId = "hideout";
+        root.SlotId = "hideout";
+        root.Upd ??= new Upd();
+        root.Upd.UnlimitedCount = false;
+        root.Upd.StackObjectsCount = Math.Max(1, stock);
+        root.Upd.BuyRestrictionMax = Math.Max(1, buyLimit);
+        root.Upd.BuyRestrictionCurrent = 0;
+
+        destination.Items.AddRange(copiedItems);
+
+        var finalPrice = RoundRoubles(candidate.PriceRoubles * Math.Max(1.0, markup));
+        destination.BarterScheme[newRootId] =
+        [
+            [
+                new BarterScheme
+                {
+                    Count = finalPrice,
+                    Template = RoublesTpl
+                }
+            ]
+        ];
+        destination.LoyalLevelItems[newRootId] = 1;
+
+        result = new OfferResult(newRootId, copiedItems, candidate.InternalName, finalPrice);
+        return true;
+    }
+
+    private static void TryAddRestrictedOffer(
+        OfferCandidate? candidate,
+        ICollection<OfferResult> unlocks,
+        TraderAssort destination,
+        HashSet<string> copiedSourceOffers,
+        NatoTraderConfig config,
+        ICloner cloner,
+        int stock,
+        int buyLimit)
+    {
+        if (candidate is null)
+        {
+            return;
+        }
+
+        TryCopyOffer(candidate, destination, copiedSourceOffers, config.RestrictedPriceMarkup,
+            stock, buyLimit, cloner, out var result);
+        if (result is not null)
+        {
+            unlocks.Add(result);
+        }
+    }
+
+    private static void AddSupplyOffer(
+        string templateId,
+        string label,
+        TraderAssort destination,
+        HashSet<string> copiedSourceOffers,
+        NatoTraderConfig config,
+        TemplateTable templateTable,
+        ICloner cloner,
+        TraderAssort primarySource,
+        string primarySourceId,
+        TraderAssort secondarySource,
+        string secondarySourceId)
+    {
+        foreach (var (source, sourceId) in new[]
+                 {
+                     (primarySource, primarySourceId),
+                     (secondarySource, secondarySourceId)
+                 })
+        {
+            var candidate = GetCandidates(sourceId, source, templateTable, config)
+                .FirstOrDefault(x => x.Root.Template.ToString() == templateId);
+            if (candidate is null)
+            {
+                continue;
+            }
+
+            TryCopyOffer(candidate, destination, copiedSourceOffers, config.PriceMarkup,
+                config.SupplyStock, config.SupplyBuyLimit, cloner, out _);
+            return;
+        }
+    }
+
+    private static void RegisterQuestChain(
+        Trader targetTrader,
+        TemplateTable templateTable,
+        TraderRegistrationHelper traderRegistrationHelper,
+        string questImage,
+        IReadOnlyCollection<OfferResult> quest1Unlocks,
+        IReadOnlyCollection<OfferResult> quest2Unlocks,
+        IReadOnlyCollection<OfferResult> quest3Unlocks,
+        IReadOnlyCollection<OfferResult> quest4Unloc
