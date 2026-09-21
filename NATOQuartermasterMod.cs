@@ -736,4 +736,188 @@ public sealed class NATOQuartermasterMod(
             SuccessMessageText = $"{questId} successMessageText",
             AcceptPlayerMessage = $"{questId} acceptPlayerMessage",
             AcceptanceAndFinishingSource = "eft",
-            DeclinePlayerMessage = $"{questId} de
+            DeclinePlayerMessage = $"{questId} declinePlayerMessage",
+            CompletePlayerMessage = $"{questId} completePlayerMessage",
+            Rewards = new Dictionary<string, List<Reward>>
+            {
+                ["Started"] = [],
+                ["Success"] = successRewards,
+                ["Fail"] = []
+            },
+            Status = 0,
+            KeyQuest = false,
+            ChangeQuestMessageText = $"{questId} changeQuestMessageText",
+            Side = "Pmc",
+            ProgressSource = "eft",
+            RankingModes = [],
+            GameModes = [],
+            ArenaLocations = []
+        };
+    }
+
+    private static QuestCondition CreateLevelCondition(string id, int level)
+    {
+        return new QuestCondition
+        {
+            Id = id,
+            Index = 0,
+            CompareMethod = ">=",
+            DynamicLocale = false,
+            GlobalQuestCounterId = string.Empty,
+            VisibilityConditions = [],
+            ParentId = string.Empty,
+            Value = level,
+            ConditionType = "Level"
+        };
+    }
+
+    private static QuestCondition CreateQuestRequirement(string id, string previousQuestId)
+    {
+        return new QuestCondition
+        {
+            Id = id,
+            Index = 0,
+            DynamicLocale = false,
+            GlobalQuestCounterId = string.Empty,
+            VisibilityConditions = [],
+            ParentId = string.Empty,
+            Target = new ListOrT<string>(null, previousQuestId),
+            Status = [QuestStatusEnum.Success],
+            AvailableAfter = 0,
+            Dispersion = 0,
+            ConditionType = "Quest"
+        };
+    }
+
+    private static QuestCondition CreateKillCondition(
+        string questId,
+        string target,
+        int count,
+        int index,
+        string? locationId)
+    {
+        var counterConditions = new List<QuestConditionCounterCondition>
+        {
+            new()
+            {
+                Id = new MongoId(StableId($"{questId}:kill-target")),
+                CompareMethod = ">=",
+                ConditionType = "Kills",
+                ResetOnSessionEnd = false,
+                Target = new ListOrT<string>(null, target),
+                Value = 1,
+                BodyPart = [],
+                Daytime = new DaytimeCounter { From = 0, To = 0 },
+                Distance = new CounterConditionDistance { CompareMethod = ">=", Value = 0 },
+                DynamicLocale = false,
+                EnemyEquipmentExclusive = [],
+                EnemyEquipmentInclusive = [],
+                EnemyHealthEffects = [],
+                SavageRole = [],
+                Weapon = [],
+                WeaponCaliber = [],
+                WeaponModsExclusive = [],
+                WeaponModsInclusive = []
+            }
+        };
+
+        if (!string.IsNullOrWhiteSpace(locationId))
+        {
+            counterConditions.Add(new QuestConditionCounterCondition
+            {
+                Id = new MongoId(StableId($"{questId}:kill-location")),
+                ConditionType = "Location",
+                DynamicLocale = false,
+                Target = new ListOrT<string>([locationId], null)
+            });
+        }
+
+        return new QuestCondition
+        {
+            CompleteInSeconds = 0,
+            ConditionType = "CounterCreator",
+            Counter = new QuestConditionCounter
+            {
+                Id = StableId($"{questId}:kill-counter"),
+                Conditions = counterConditions
+            },
+            DoNotResetIfCounterCompleted = false,
+            DynamicLocale = false,
+            GlobalQuestCounterId = string.Empty,
+            Id = new MongoId(StableId($"{questId}:kill")),
+            Index = index,
+            IsNecessary = true,
+            IsResetOnConditionFailed = false,
+            OneSessionOnly = false,
+            ParentId = string.Empty,
+            Type = "Elimination",
+            Value = count,
+            VisibilityConditions = []
+        };
+    }
+
+    private static QuestCondition CreateHandoverCondition(
+        string id,
+        IEnumerable<string> targetTemplates,
+        int count,
+        int dogtagLevel,
+        int index)
+    {
+        return new QuestCondition
+        {
+            Id = id,
+            Index = index,
+            DynamicLocale = false,
+            GlobalQuestCounterId = string.Empty,
+            VisibilityConditions = [],
+            ParentId = string.Empty,
+            Target = new ListOrT<string>(targetTemplates.ToList(), null),
+            Value = count,
+            OnlyFoundInRaid = false,
+            DogtagLevel = dogtagLevel,
+            MaxDurability = 100,
+            MinDurability = 0,
+            IsEncoded = false,
+            ConditionType = "HandoverItem"
+        };
+    }
+
+    private static Dictionary<string, string> BuildQuestLocaleEntries(
+        string q1MreCondition,
+        string q1WaterCondition,
+        string q2DogtagCondition,
+        string q3DogtagCondition,
+        string q4ScavCondition,
+        string q5DogtagCondition,
+        string q6PmcCondition,
+        string q6DogtagCondition)
+    {
+        return new Dictionary<string, string>
+        {
+            [$"{QuestInventoryCheck} name"] = "Inventory Check",
+            [$"{QuestInventoryCheck} description"] = "A supply chain is only as reliable as the person standing at the end of it. Bring me two MREs and two bottles of water. Nothing glamorous. If you can handle the boring work without losing half of it, I may open the better racks to you.",
+            [$"{QuestInventoryCheck} note"] = "Ward wants basic field rations before discussing restricted stock.",
+            [$"{QuestInventoryCheck} startedMessageText"] = "Two meals. Two waters. Try not to turn procurement into an adventure.",
+            [$"{QuestInventoryCheck} successMessageText"] = "Good. Inventory accounted for. I've opened one of the restricted armor racks.",
+            [$"{QuestInventoryCheck} failMessageText"] = "Impressive. You managed to lose a logistics task.",
+            [$"{QuestInventoryCheck} acceptPlayerMessage"] = "I'll get it handled.",
+            [$"{QuestInventoryCheck} declinePlayerMessage"] = "Not interested.",
+            [$"{QuestInventoryCheck} completePlayerMessage"] = "Inventory accounted for.",
+            [$"{QuestInventoryCheck} changeQuestMessageText"] = "The manifest changed. The requirement did not.",
+            [q1MreCondition] = "Hand over 2 MRE ration packs",
+            [q1WaterCondition] = "Hand over 2 bottles of water",
+
+            [$"{QuestChainOfCustody} name"] = "Chain of Custody",
+            [$"{QuestChainOfCustody} description"] = "One of my manifests has too many names still marked active. Bring me five PMC dogtags. I don't care which patch they wore. I need proof before I move restricted weapons off the books.",
+            [$"{QuestChainOfCustody} note"] = "Dogtags are evidence, not trophies, at least according to Ward.",
+            [$"{QuestChainOfCustody} startedMessageText"] = "Five tags. Legible. I have enough mysteries in the inventory system already.",
+            [$"{QuestChainOfCustody} successMessageText"] = "Good. Five names removed from the manifest. One restricted rifle is now on your purchase list.",
+            [$"{QuestChainOfCustody} failMessageText"] = "Chain of custody broken. Again.",
+            [$"{QuestChainOfCustody} acceptPlayerMessage"] = "I'll bring proof.",
+            [$"{QuestChainOfCustody} declinePlayerMessage"] = "Keep the rifle.",
+            [$"{QuestChainOfCustody} completePlayerMessage"] = "The tags are yours.",
+            [$"{QuestChainOfCustody} changeQuestMessageText"] = "Same manifest. More dead ink.",
+            [q2DogtagCondition] = "Hand over 5 PMC dogtags",
+
+            [$"{QuestRestrictedIssue} name"] = "Restricted Issue",
+            [$"{QuestRestrictedIssue} description"] = "The first controlled cabinet is armor and ammunition that attracts questions. Bring me ten dogtags from operators level fifteen or higher. If you're working at that level, I can justify moving seri
