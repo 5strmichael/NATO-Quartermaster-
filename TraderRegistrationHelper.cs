@@ -40,9 +40,9 @@ public sealed class TraderRegistrationHelper(
             Base = cloner.Clone(traderBase),
             QuestAssort = new()
             {
-                { "Started", new() },
-                { "Success", new() },
-                { "Fail", new() }
+                { "started", new() },
+                { "success", new() },
+                { "fail", new() }
             },
             Dialogue = []
         };
