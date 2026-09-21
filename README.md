@@ -51,6 +51,14 @@ The release build creates:
 
 `ReleaseZip\Michael-NATOQuartermaster-1.1.3.zip`
 
+## Updating from an older version
+
+Before installing v1.1.3, close SPT and delete the existing `Michael-NATOQuartermaster` folder from:
+
+`SPT_Runtime\user\mods\`
+
+Then install v1.1.3 fresh. Do not keep multiple versions of NATO Quartermaster installed at the same time. The existing trader and original quest IDs are preserved, so existing profile progress should carry forward, but backing up your profile before updating is always recommended.
+
 ## Install
 
 Extract the generated release ZIP into your SPT root. The compiled mod should end up at:
