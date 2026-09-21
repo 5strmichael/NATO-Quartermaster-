@@ -29,7 +29,7 @@ if errorlevel 1 goto :fail
 echo.
 echo SUCCESS.
 echo Your installable ZIP is in:
-echo   ReleaseZip\Michael-NATOQuartermaster-1.1.1.zip
+echo   ReleaseZip\Michael-NATOQuartermaster-1.1.3.zip
 echo.
 pause
 exit /b 0
