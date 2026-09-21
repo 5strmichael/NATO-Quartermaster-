@@ -920,4 +920,148 @@ public sealed class NATOQuartermasterMod(
             [q2DogtagCondition] = "Hand over 5 PMC dogtags",
 
             [$"{QuestRestrictedIssue} name"] = "Restricted Issue",
-            [$"{QuestRestrictedIssue} description"] = "The first controlled cabinet is armor and ammunition that attracts questions. Bring me ten dogtags from operators level fifteen or higher. If you're working at that level, I can justify moving seri
+            [$"{QuestRestrictedIssue} description"] = "The first controlled cabinet is armor and ammunition that attracts questions. Bring me ten dogtags from operators level fifteen or higher. If you're working at that level, I can justify moving serious inventory to your account.",
+            [$"{QuestRestrictedIssue} note"] = "Ward's first restricted cabinet is reserved for proven operators.",
+            [$"{QuestRestrictedIssue} startedMessageText"] = "Ten experienced operators. Level fifteen minimum.",
+            [$"{QuestRestrictedIssue} successMessageText"] = "Enough. The restricted cabinet is open. Better protection and premium ammunition are now on the books.",
+            [$"{QuestRestrictedIssue} failMessageText"] = "Restricted means restricted. Come back when the paperwork is convincing.",
+            [$"{QuestRestrictedIssue} acceptPlayerMessage"] = "Open the cabinet when I get back.",
+            [$"{QuestRestrictedIssue} declinePlayerMessage"] = "Not worth it.",
+            [$"{QuestRestrictedIssue} completePlayerMessage"] = "Ten qualified tags.",
+            [$"{QuestRestrictedIssue} changeQuestMessageText"] = "The cabinet remains locked.",
+            [q3DogtagCondition] = "Hand over 10 PMC dogtags from level 15+ operators",
+
+            [$"{QuestSupplyInterruption} name"] = "Supply Interruption",
+            [$"{QuestSupplyInterruption} description"] = "A scav crew has been hitting the Customs route I use to move protective equipment inland. Twelve of them should be enough to make the next convoy boring again. I like boring convoys.",
+            [$"{QuestSupplyInterruption} note"] = "Clear Ward's Customs supply route and a second premium armor shelf becomes available.",
+            [$"{QuestSupplyInterruption} startedMessageText"] = "Customs. Twelve scavengers. Keep my route open.",
+            [$"{QuestSupplyInterruption} successMessageText"] = "Route is moving again. I've added another set of premium armor and head protection to your account.",
+            [$"{QuestSupplyInterruption} failMessageText"] = "The route is still blocked.",
+            [$"{QuestSupplyInterruption} acceptPlayerMessage"] = "I'll clear the route.",
+            [$"{QuestSupplyInterruption} declinePlayerMessage"] = "Find another route.",
+            [$"{QuestSupplyInterruption} completePlayerMessage"] = "Customs is clear enough.",
+            [$"{QuestSupplyInterruption} changeQuestMessageText"] = "Convoy schedule remains unchanged.",
+            [q4ScavCondition] = "Eliminate 12 Scavs on Customs",
+
+            [$"{QuestBlackLedger} name"] = "Black Ledger",
+            [$"{QuestBlackLedger} description"] = "The public manifest is clean. The other ledger isn't. I need eight tags from operators level twenty-five or higher before I move the next rifle and ammunition allotment out of reserve.",
+            [$"{QuestBlackLedger} note"] = "Experienced PMC tags buy access to Ward's deeper reserve inventory.",
+            [$"{QuestBlackLedger} startedMessageText"] = "Eight tags. Level twenty-five or better. No tourists.",
+            [$"{QuestBlackLedger} successMessageText"] = "The ledger balances. Another premium rifle and another AP allocation are now available to you.",
+            [$"{QuestBlackLedger} failMessageText"] = "The numbers do not balance.",
+            [$"{QuestBlackLedger} acceptPlayerMessage"] = "I'll balance it.",
+            [$"{QuestBlackLedger} declinePlayerMessage"] = "Keep it off the books.",
+            [$"{QuestBlackLedger} completePlayerMessage"] = "Eight experienced names accounted for.",
+            [$"{QuestBlackLedger} changeQuestMessageText"] = "The ledger is still open.",
+            [q5DogtagCondition] = "Hand over 8 PMC dogtags from level 25+ operators",
+
+            [$"{QuestPriorityShipment} name"] = "Priority Shipment",
+            [$"{QuestPriorityShipment} description"] = "Last allocation. The stock in this shipment was never meant for open sale. Remove eight PMCs from the board and bring me twelve tags from level thirty or higher. Do that, and I'll stop pretending the black rack doesn't exist.",
+            [$"{QuestPriorityShipment} note"] = "Ward's final contract opens his best available Western equipment.",
+            [$"{QuestPriorityShipment} startedMessageText"] = "Eight PMCs down. Twelve level-thirty tags on my desk. Then we discuss the black rack.",
+            [$"{QuestPriorityShipment} successMessageText"] = "Contract closed. The black rack is yours to buy from: elite rifle, armor, helmet, and the remaining premium ammunition I can source.",
+            [$"{QuestPriorityShipment} failMessageText"] = "Priority inventory stays sealed until the contract is complete.",
+            [$"{QuestPriorityShipment} acceptPlayerMessage"] = "Get the shipment ready.",
+            [$"{QuestPriorityShipment} declinePlayerMessage"] = "Keep it sealed.",
+            [$"{QuestPriorityShipment} completePlayerMessage"] = "Open the black rack.",
+            [$"{QuestPriorityShipment} changeQuestMessageText"] = "Priority shipment remains held.",
+            [q6PmcCondition] = "Eliminate 8 PMCs",
+            [q6DogtagCondition] = "Hand over 12 PMC dogtags from level 30+ operators"
+        };
+    }
+
+    private static List<Item> CollectSubtree(List<Item> allItems, string rootId)
+    {
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { rootId };
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var item in allItems)
+            {
+                if (item.ParentId is null || !ids.Contains(item.ParentId))
+                {
+                    continue;
+                }
+
+                if (ids.Add(item.Id.ToString()))
+                {
+                    changed = true;
+                }
+            }
+        }
+
+        return allItems.Where(x => ids.Contains(x.Id.ToString())).ToList();
+    }
+
+    private static bool MatchesAny(string value, IEnumerable<string> keywords)
+    {
+        foreach (var keyword in keywords)
+        {
+            if (!string.IsNullOrWhiteSpace(keyword)
+                && value.Contains(keyword.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool LooksLikeMagazine(string internalName)
+    {
+        return internalName.Contains("mag", StringComparison.OrdinalIgnoreCase)
+               || internalName.Contains("clip", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetPlatformKey(string internalName, IEnumerable<string> keywords)
+    {
+        foreach (var keyword in keywords)
+        {
+            if (!string.IsNullOrWhiteSpace(keyword)
+                && internalName.Contains(keyword.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return keyword.Trim().ToLowerInvariant();
+            }
+        }
+
+        return internalName;
+    }
+
+    private static int RoundRoubles(double value)
+    {
+        var safeValue = Math.Max(1, value);
+        var increment = safeValue switch
+        {
+            >= 100000 => 1000,
+            >= 10000 => 100,
+            >= 1000 => 50,
+            _ => 10
+        };
+
+        return (int)(Math.Ceiling(safeValue / increment) * increment);
+    }
+
+    private static string StableId(string seed)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
+        return Convert.ToHexString(hash.AsSpan(0, 12)).ToLowerInvariant();
+    }
+
+    private sealed record OfferCandidate(
+        string SourceTraderId,
+        TraderAssort SourceAssort,
+        Item Root,
+        string InternalName,
+        double PriceRoubles,
+        int SubtreeCount)
+    {
+        public string SourceKey => $"{SourceTraderId}:{Root.Id}";
+    }
+
+    private sealed record OfferResult(
+        MongoId RootId,
+        List<Item> Items,
+        string InternalName,
+        int PriceRoubles);
+}
