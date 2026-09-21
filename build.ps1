@@ -12,4 +12,4 @@ dotnet build -c Release
 
 Write-Host ""
 Write-Host "Build complete. Installable ZIP:"
-Write-Host "$PSScriptRoot\ReleaseZip\Michael-NATOQuartermaster-1.1.1.zip"
+Write-Host "$PSScriptRoot\ReleaseZip\Michael-NATOQuartermaster-1.1.3.zip"
