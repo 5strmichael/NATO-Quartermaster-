@@ -164,4 +164,153 @@ public sealed class NATOQuartermasterMod(
             .ToList();
 
         var restrictedSourceKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (va
+        foreach (var candidate in restrictedVestCandidates) restrictedSourceKeys.Add(candidate.SourceKey);
+        foreach (var candidate in restrictedHelmetCandidates) restrictedSourceKeys.Add(candidate.SourceKey);
+        foreach (var candidate in restrictedWeaponCandidates) restrictedSourceKeys.Add(candidate.SourceKey);
+        foreach (var ammo in restrictedAmmoCandidates) restrictedSourceKeys.Add(ammo.SourceKey);
+
+        var normalResults = new List<OfferResult>();
+
+        // Complete Western weapon builds/presets. Prefer offers with more child parts, and cap
+        // each platform so the trader stays curated instead of becoming Peacekeeper 2.0.
+        var normalWeapons = allWeaponCandidates
+            .Where(x => !restrictedSourceKeys.Contains(x.SourceKey))
+            .GroupBy(x => GetPlatformKey(x.InternalName, config.WeaponKeywords))
+            .SelectMany(group => group
+                .OrderByDescending(x => x.SubtreeCount)
+                .ThenByDescending(x => x.PriceRoubles)
+                .Take(Math.Max(1, config.WeaponsPerPlatform)))
+            .ToList();
+
+        foreach (var candidate in normalWeapons)
+        {
+            TryCopyOffer(candidate, targetTrader.Assort, copiedSourceOffers, config.PriceMarkup,
+                config.WeaponStock, config.WeaponBuyLimit, cloner, out var result);
+            if (result is not null) normalResults.Add(result);
+        }
+
+        // Good, practical ammunition. Top-tier AP is reserved for quest 3.
+        var normalAmmo = peacekeeperCandidates
+            .Where(x => MatchesAny(x.InternalName, config.AmmoKeywords))
+            .Where(x => !MatchesAny(x.InternalName, config.RestrictedAmmoKeywords))
+            .GroupBy(x => x.Root.Template)
+            .Select(x => x.OrderBy(y => y.PriceRoubles).First())
+            .OrderBy(x => x.PriceRoubles)
+            .ToList();
+
+        foreach (var candidate in normalAmmo)
+        {
+            TryCopyOffer(candidate, targetTrader.Assort, copiedSourceOffers, config.PriceMarkup,
+                config.AmmoStock, config.AmmoBuyLimit, cloner, out var result);
+            if (result is not null) normalResults.Add(result);
+        }
+
+        // Useful magazines only; no rails, handguards, muzzle adapters, or random gunsmith clutter.
+        var magazineCandidates = peacekeeperCandidates
+            .Concat(mechanicCandidates)
+            .Where(x => LooksLikeMagazine(x.InternalName))
+            .Where(x => MatchesAny(x.InternalName, config.MagazineKeywords))
+            .GroupBy(x => x.Root.Template)
+            .Select(x => x.OrderBy(y => y.PriceRoubles).First())
+            .OrderByDescending(x => x.PriceRoubles)
+            .Take(Math.Max(0, config.MaxMagazineOffers))
+            .ToList();
+
+        foreach (var candidate in magazineCandidates)
+        {
+            TryCopyOffer(candidate, targetTrader.Assort, copiedSourceOffers, config.PriceMarkup,
+                config.MagazineStock, config.MagazineBuyLimit, cloner, out var result);
+            if (result is not null) normalResults.Add(result);
+        }
+
+        // Curated Western armor/rigs/helmets/packs/comms. The specific quest reward vest and
+        // helmet are excluded until their quests are completed.
+        var normalGear = ragmanCandidates
+            .Where(x => MatchesAny(x.InternalName, config.GearKeywords))
+            .Where(x => !restrictedSourceKeys.Contains(x.SourceKey))
+            .GroupBy(x => x.Root.Template)
+            .Select(x => x.OrderByDescending(y => y.PriceRoubles).First())
+            .OrderByDescending(x => x.PriceRoubles)
+            .Take(Math.Max(0, config.MaxGearOffers))
+            .ToList();
+
+        foreach (var candidate in normalGear)
+        {
+            TryCopyOffer(candidate, targetTrader.Assort, copiedSourceOffers, config.PriceMarkup,
+                config.GearStock, config.GearBuyLimit, cloner, out var result);
+            if (result is not null) normalResults.Add(result);
+        }
+
+        // Field supplies are part of the Quartermaster identity, but deliberately kept small.
+        AddSupplyOffer(MreTpl, "MRE", targetTrader.Assort, copiedSourceOffers, config, templateTable, cloner,
+            tradersTable.GetTrader(JaegerId).Assort, JaegerId,
+            tradersTable.GetTrader(TherapistId).Assort, TherapistId);
+        AddSupplyOffer(WaterTpl, "water", targetTrader.Assort, copiedSourceOffers, config, templateTable, cloner,
+            tradersTable.GetTrader(TherapistId).Assort, TherapistId,
+            tradersTable.GetTrader(JaegerId).Assort, JaegerId);
+
+        // Restricted stock. Offers exist at LL1, but lower-case questassort mappings hide
+        // them until the matching task is completed. SPT's lookup is case-sensitive.
+        var quest1Unlocks = new List<OfferResult>();
+        var quest2Unlocks = new List<OfferResult>();
+        var quest3Unlocks = new List<OfferResult>();
+        var quest4Unlocks = new List<OfferResult>();
+        var quest5Unlocks = new List<OfferResult>();
+        var quest6Unlocks = new List<OfferResult>();
+
+        TryAddRestrictedOffer(restrictedVestCandidates.ElementAtOrDefault(0), quest1Unlocks,
+            targetTrader.Assort, copiedSourceOffers, config, cloner, 1, 1);
+
+        TryAddRestrictedOffer(restrictedWeaponCandidates.ElementAtOrDefault(0), quest2Unlocks,
+            targetTrader.Assort, copiedSourceOffers, config, cloner, 1, 1);
+
+        TryAddRestrictedOffer(restrictedHelmetCandidates.ElementAtOrDefault(0), quest3Unlocks,
+            targetTrader.Assort, copiedSourceOffers, config, cloner, 1, 1);
+        foreach (var candidate in restrictedAmmoCandidates.Take(2))
+        {
+            TryAddRestrictedOffer(candidate, quest3Unlocks, targetTrader.Assort, copiedSourceOffers,
+                config, cloner, config.RestrictedAmmoStock, config.RestrictedAmmoBuyLimit);
+        }
+
+        // Quest 4 opens a second high-end armor shelf.
+        TryAddRestrictedOffer(restrictedVestCandidates.ElementAtOrDefault(1), quest4Unlocks,
+            targetTrader.Assort, copiedSourceOffers, config, cloner, 1, 1);
+        TryAddRestrictedOffer(restrictedHelmetCandidates.ElementAtOrDefault(1), quest4Unlocks,
+            targetTrader.Assort, copiedSourceOffers, config, cloner, 1, 1);
+
+        // Quest 5 opens another complete premium rifle plus more restricted ammunition.
+        TryAddRestrictedOffer(restrictedWeaponCandidates.ElementAtOrDefault(1), quest5Unlocks,
+            targetTrader.Assort, copiedSourceOffers, config, cloner, 1, 1);
+        foreach (var candidate in restrictedAmmoCandidates.Skip(2).Take(2))
+        {
+            TryAddRestrictedOffer(candidate, quest5Unlocks, targetTrader.Assort, copiedSourceOffers,
+                config, cloner, config.RestrictedAmmoStock, config.RestrictedAmmoBuyLimit);
+        }
+
+        // Final quest opens the black rack: another elite rifle, armor, helmet, and remaining AP.
+        TryAddRestrictedOffer(restrictedWeaponCandidates.ElementAtOrDefault(2), quest6Unlocks,
+            targetTrader.Assort, copiedSourceOffers, config, cloner, 1, 1);
+        TryAddRestrictedOffer(restrictedVestCandidates.ElementAtOrDefault(2), quest6Unlocks,
+            targetTrader.Assort, copiedSourceOffers, config, cloner, 1, 1);
+        TryAddRestrictedOffer(restrictedHelmetCandidates.ElementAtOrDefault(2), quest6Unlocks,
+            targetTrader.Assort, copiedSourceOffers, config, cloner, 1, 1);
+        foreach (var candidate in restrictedAmmoCandidates.Skip(4))
+        {
+            TryAddRestrictedOffer(candidate, quest6Unlocks, targetTrader.Assort, copiedSourceOffers,
+                config, cloner, config.RestrictedAmmoStock, config.RestrictedAmmoBuyLimit);
+        }
+
+        RegisterQuestChain(
+            targetTrader,
+            templateTable,
+            traderRegistrationHelper,
+            questImage,
+            quest1Unlocks,
+            quest2Unlocks,
+            quest3Unlocks,
+            quest4Unlocks,
+            quest5Unlocks,
+            quest6Unlocks,
+            cloner);
+
+        va
